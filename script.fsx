@@ -32,12 +32,7 @@ type MyButton() =
 type Maniglia() =
     inherit LWCControl()
 
-    let mutable id = 0
     let mutable penWidth = 1.f
-
-    member this.ID
-        with get() = id
-        and set(v) = id <- v
 
     member this.PenWidth
         with get() = penWidth
@@ -61,18 +56,11 @@ type Maniglia() =
 type Planet() = 
     inherit LWCControl()
 
-    let mutable id = 0
-    let wv =  WVMatrix()
     let mutable penWidth = 1.f
     let mutable image: Bitmap option = None
     let mutable mass = 0.f
     let mutable maniglie = ResizeArray<Maniglia>()
-
-    member this.WV = wv
-
-    member this.ID
-        with get() = id
-        and set(v) = id <- v
+    let mutable vectorEnd = new PointF(35.f, 35.f)
 
     member this.PenWidth
         with get() = penWidth
@@ -86,18 +74,26 @@ type Planet() =
         and set(m) = mass <- m
 
     member  this.Maniglie with get() = maniglie      
-        
+    
+    member this.VectorEnd 
+        with get() = vectorEnd
+        and set(v) = vectorEnd <- v
+
     member this.UpdatePositionManiglie(position: PointF) =
         this.Maniglie.[0].Position <- PointF(position.X, position.Y - this.Height/2.f)
         this.Maniglie.[1].Position <- PointF(position.X, position.Y + this.Height/2.f)
         this.Maniglie.[2].Position <- PointF(position.X - this.Width/2.f, position.Y)
         this.Maniglie.[3].Position <- PointF(position.X + this.Width/2.f, position.Y)
+        this.Maniglie.[4].Position <- PointF(position.X + this.VectorEnd.X, position.Y + this.VectorEnd.Y)
+
 
     override this.OnPaint e =
         let g = e.Graphics
         let parent = this.Parent
         let position = PointF(this.Position.X - this.Width/2.f, this.Position.Y - this.Height/2.f)
         let r = RectF2Rect(RectangleF(position, this.Size)) 
+        use vectorP = new Pen(Color.Green, 1.f)
+        vectorP.EndCap <- Drawing2D.LineCap.ArrowAnchor
         this.UpdatePositionManiglie(PointF(this.Position.X, this.Position.Y)) 
         
         match image with
@@ -114,13 +110,14 @@ type Planet() =
         
         g.SmoothingMode <- Drawing2D.SmoothingMode.HighQuality
         g.DrawEllipse(new Pen(Color.Blue,penWidth), r)
+        g.DrawLine(vectorP, this.Position, PointF(this.Position.X + this.VectorEnd.X, this.Position.Y + this.VectorEnd.Y))
 
     override this.HitTest p =
         let x = this.Position.X - p.X
         let y = this.Position.Y - p.Y
         let asseMax = max (this.Width/2.f) (this.Height/2.f)
         let asseMin = min (this.Width/2.f) (this.Height/2.f)
-        (x*x)/(asseMax*asseMax) + (y*y)/(asseMin*asseMin) < 1.f
+        (x*x) / (asseMax*asseMax) + (y*y)/(asseMin*asseMin) < 1.f 
 
 
 type MButton =
@@ -152,32 +149,35 @@ type Container() as this =
                     MyButton(Position=PointF(450.f, 2.f),Size=SizeF(30.f, 30.f),Text="↷");
                     MyButton(Position=PointF(500.f, 2.f),Size=SizeF(30.f, 30.f),Text="↶");|]
     
-    let mutable id = 0
     let planets = ResizeArray<Planet>()
     let mutable creatingPlanets = false
     let mutable dragging = None
-    let mutable draggingManiglia = None
+    let mutable draggingManiglia: (int * PointF * Planet) option = None
     let mutable offsetDrag = PointF()
     let mutable selectedPlanet: Planet option = None
     let mutable selectedManiglia: Maniglia option = None
+    let mutable boolClickManiglia = false
 
     let setCreatingMode() =
         creatingPlanets <- true 
+    
+    let animationTimer = new Timer(Interval = 1000/60)
 
     let addPlanet(p: PointF) =
         let position = this.WV.TransformPointV(p)
-        id <- id + 1
-        let newPlanet = Planet(Position=position, Size=SizeF(60.f, 60.f), ID=id, CoordinateType = World)
+        let newPlanet = Planet(Position=position, Size=SizeF(80.f, 80.f), CoordinateType = World)
         newPlanet.Mass <- (float32) System.Math.PI * newPlanet.Width/2.f * newPlanet.Height/2.f
 
-        let upManiglia = Maniglia(Position=PointF(position.X, position.Y - newPlanet.Height/2.f), Size=SizeF(10.f, 10.f), ID=id, CoordinateType = World)
-        let downManiglia = Maniglia(Position=PointF(position.X, newPlanet.Position.Y + newPlanet.Height/2.f), Size=SizeF(10.f, 10.f), ID=id, CoordinateType = World)
-        let leftManiglia = Maniglia(Position=PointF(position.X - newPlanet.Width/2.f, position.Y), Size=SizeF(10.f, 10.f), ID=id, CoordinateType = World)
-        let rightManiglia = Maniglia(Position=PointF(position.X + newPlanet.Width/2.f, position.Y), Size=SizeF(10.f, 10.f), ID=id, CoordinateType = World)
+        let upManiglia = Maniglia(Position=PointF(position.X, position.Y - newPlanet.Height/2.f), Size=SizeF(15.f, 15.f), CoordinateType = World)
+        let downManiglia = Maniglia(Position=PointF(position.X, newPlanet.Position.Y + newPlanet.Height/2.f), Size=SizeF(15.f, 15.f), CoordinateType = World)
+        let leftManiglia = Maniglia(Position=PointF(position.X - newPlanet.Width/2.f, position.Y), Size=SizeF(15.f, 15.f), CoordinateType = World)
+        let rightManiglia = Maniglia(Position=PointF(position.X + newPlanet.Width/2.f, position.Y), Size=SizeF(15.f, 15.f), CoordinateType = World)
+        let vectorManiglia = Maniglia(Position=PointF(position.X + newPlanet.VectorEnd.X, position.Y + newPlanet.VectorEnd.Y), Size=SizeF(10.f, 10.f), CoordinateType = World)
         newPlanet.Maniglie.Add(upManiglia)
         newPlanet.Maniglie.Add(downManiglia)
         newPlanet.Maniglie.Add(leftManiglia)
         newPlanet.Maniglie.Add(rightManiglia)
+        newPlanet.Maniglie.Add(vectorManiglia)
 
         planets.Add(newPlanet)
         newPlanet.Parent <- Some(this :> UserControl)
@@ -201,11 +201,15 @@ type Container() as this =
             if(dialog.ShowDialog() = DialogResult.OK) then
                 let image = new Bitmap(dialog.FileName)
                 planet.AddImage(Some image) |> ignore
+                printfn "oh so in addImage"
                 this.Invalidate()
         | _ -> ()
 
-    let animate() =
-        ()
+    let animate() = 
+        if (animationTimer.Enabled) then
+            animationTimer.Stop()
+        else 
+            animationTimer.Start()
 
     let movingPlanets control = 
         match control with 
@@ -253,6 +257,25 @@ type Container() as this =
         for butt in buttons do
             this.LWControls.Add(butt)
 
+    do
+        animationTimer.Tick.Add(fun _ ->
+            let cost = 0.02f 
+            let costGrav = 10.f
+            for p1 in planets do 
+                for p2 in planets do    
+                    if(not (p1.Equals(p2))) then
+                        let distanza = PointF(p2.Position.X - p1.Position.X, p2.Position.Y - p1.Position.Y)
+                        let mutable distQuad = distanza.X*distanza.X + distanza.Y*distanza.Y
+                        if(distQuad < 0.1f) then
+                            distQuad <- 0.1f
+                        let vettoreUnitario = PointF(distanza.X/sqrt(distQuad), distanza.Y/sqrt(distQuad))
+                        let acc = PointF(vettoreUnitario.X*(costGrav*p2.Mass/distQuad), vettoreUnitario.Y*(costGrav*p2.Mass/distQuad))
+                        p1.VectorEnd <- PointF(p1.VectorEnd.X + acc.X, p1.VectorEnd.Y + acc.Y)
+
+            for planet in planets do
+                planet.Position <- PointF(planet.Position.X + planet.VectorEnd.X*cost, planet.Position.Y + planet.VectorEnd.Y*cost)
+            this.Invalidate()
+        )
 
     override this.OnMouseDown e =
         let position = PointF(single e.X, single e.Y)
@@ -267,60 +290,65 @@ type Container() as this =
                     | true -> addPlanet(position)
                     | _ ->
                         let pw = this.WV.TransformPointV position
+
+                        for planet in planets  do
+                            match (planet.Maniglie |> Seq.tryFindIndexBack (fun m -> m.HitTest pw)) with
+                                | Some maniglia -> 
+                                    // ho cliccato su una maniglia
+                                    let m = planet.Maniglie.[maniglia]
+                                    let mutable from = m.Position
+                                    match selectedManiglia with
+                                        | Some m -> m.PenWidth <- 1.f
+                                        | None -> ()
+                                    boolClickManiglia <- true
+                                    m.PenWidth <- 2.f
+                                    selectedManiglia <- Some (m)
+                                    draggingManiglia <- Some (maniglia, from, planet)
+                                    offsetDrag <- PointF(m.Position.X - pw.X, m.Position.Y - pw.Y)
+                                | _ -> ()
+
                         match (planets |> Seq.tryFindBack (fun c -> c.HitTest pw)) with
                             | Some control -> 
                                 // ho cliccato su un pianeta
                                 let mutable from = control.Position
-                                match selectedPlanet with
-                                    | Some planet -> 
-                                            planet.PenWidth <- 1.f
-                                    | _ -> ()
-                                match selectedManiglia with
-                                        | Some maniglia -> 
-                                                maniglia.PenWidth <- 1.f
-                                                selectedManiglia <- None
-                                        | _ -> ()
-                                control.PenWidth <- 2.f
-                                selectedPlanet <- Some control
-                                dragging <- Some (control, from)
-                                offsetDrag <- PointF(control.Position.X - pw.X, control.Position.Y - pw.Y)
-                                control.OnMouseDown(e)
+                                if (not boolClickManiglia) then 
+                                    match selectedPlanet with
+                                        | Some planet -> 
+                                                planet.PenWidth <- 1.f
+                                        | None -> ()
+                                    control.PenWidth <- 2.f
+                                    selectedPlanet <- Some control
+
+                                    match selectedManiglia with
+                                        | Some maniglia -> maniglia.PenWidth <- 1.f
+                                        | None -> ()
+                                    selectedManiglia <- None
+
+                                if (boolClickManiglia) then 
+                                    match selectedPlanet with
+                                        | Some planet -> 
+                                                planet.PenWidth <- 1.f
+                                        | None -> ()
+                                    selectedPlanet <- None
+
+                                if (draggingManiglia.IsNone) then
+                                    dragging <- Some (control, from)
+                                    offsetDrag <- PointF(control.Position.X - pw.X, control.Position.Y - pw.Y)
+                               
                             | _ ->
                                 // non hai cliccato su un pianeta
                                 match selectedPlanet with
                                     | Some planet -> 
                                         planet.PenWidth <- 1.f
-                                    | _ -> ()
-                                selectedPlanet <- None
-
-                        for planet in planets  do
-                            match (planet.Maniglie |> Seq.tryFindBack (fun c -> c.HitTest pw)) with
-                                | Some control -> 
-                                    // ho cliccato su una maniglia
-                                    let mutable from = control.Position
+                                    | None -> ()
+                                if (not boolClickManiglia) then
                                     match selectedManiglia with
-                                        | Some maniglia -> 
-                                                maniglia.PenWidth <- 1.f
-                                        | _ -> ()
-                                    match selectedPlanet with
-                                        | Some planet -> 
-                                                planet.PenWidth <- 1.f
-                                                selectedPlanet <- None
-                                        | _ -> ()
-                                    control.PenWidth <- 2.f
-                                    selectedManiglia <- Some control
-                                    draggingManiglia <- Some (control, from)
-                                    offsetDrag <- PointF(control.Position.X - pw.X, control.Position.Y - pw.Y)
-                                    control.OnMouseDown(e)
-                                | _ ->
-                                    // non hai cliccato su una maniglia
-                                    match selectedManiglia with
-                                        | Some maniglia -> 
-                                            maniglia.PenWidth <- 1.f
-                                        | _ -> ()
+                                        | Some maniglia -> maniglia.PenWidth <- 1.f
+                                        | None -> ()
                                     selectedManiglia <- None
-                                    selectedPlanet <- None
-
+                                selectedPlanet <- None
+                               
+                        boolClickManiglia <- false      
                         this.Invalidate()
 
 
@@ -328,40 +356,54 @@ type Container() as this =
         let position = PointF(single e.X, single e.Y)
         let controlsView = this.LWControls |> Seq.filter (fun c -> c.CoordinateType = View)
         match (controlsView |> Seq.tryFind (fun c -> c.HitTest position)) with
-        | Some control -> control.OnMouseUp(e)
-        | _ -> ()       
+            | Some control -> control.OnMouseUp(e)
+            | _ -> ()       
         dragging <- None
-        // draggingManiglia <- None
+        draggingManiglia <- None
         movingTimer.Stop()
 
 
     override this.OnMouseMove e =
         let position = PointF(single e.X, single e.Y)
         let controlsView = this.LWControls |> Seq.filter (fun c -> c.CoordinateType = View)
-        let controlPlanet() = 
+        let controlDragging() = 
             let pw = this.WV.TransformPointV position
-            match dragging with
-                | Some (planet, position) -> 
-                   planet.Position <- PointF(pw.X + offsetDrag.X, pw.Y + offsetDrag.Y)
-                   planet.Invalidate()
-                | _ -> ()
-        //let controlManiglia() =
-          //  let pw = this.WV.TransformPointV position
-           // match draggingManiglia with
-             //   | Some (maniglia, position) -> 
-               //    maniglia.Position <- PointF(pw.X + offsetDrag.X, pw.Y + offsetDrag.Y)
-                 //  maniglia.Invalidate()
-               // | _ -> ()
+            match draggingManiglia with
+                | Some (m, pos, planet) -> 
+                   let maniglia = planet.Maniglie.[m]
+                   match m with 
+                        | 0 -> 
+                            let diff = maniglia.Position.Y - (pw.Y + offsetDrag.Y)
+                            planet.Size <- SizeF(planet.Width, planet.Height + 2.f*diff)
+                        | 1 -> 
+                            let diff = -maniglia.Position.Y + pw.Y + offsetDrag.Y
+                            planet.Size <- SizeF(planet.Width, planet.Height + 2.f*diff)
+                        | 2 ->
+                            let diff = maniglia.Position.X - (pw.X + offsetDrag.X)
+                            planet.Size <- SizeF(planet.Width + 2.f*diff, planet.Height)
+                        | 3 -> 
+                            let diff = -maniglia.Position.X + pw.X + offsetDrag.X
+                            planet.Size <- SizeF(planet.Width + 2.f*diff, planet.Height)
+                        | 4 -> 
+                            let x = pw.X + offsetDrag.X - planet.Position.X
+                            let y = pw.Y + offsetDrag.Y - planet.Position.Y
+                            planet.VectorEnd <- PointF(x, y)
+                        |_ -> ()
+
+                   this.Invalidate()
+                | _ -> 
+                    match dragging with
+                        | Some (planet, p) -> 
+                           planet.Position <- PointF(pw.X + offsetDrag.X, pw.Y + offsetDrag.Y)
+                           this.Invalidate()
+                        | _ -> ()
 
         match (controlsView |> Seq.tryFind(fun c -> c.HitTest position)) with
             | Some control -> 
                control.OnMouseMove(e)
-               controlPlanet()
-               //controlManiglia()
-            | None -> controlPlanet()
+               controlDragging()
+            | None -> controlDragging()
         
-
-
 
     override this.OnPaint e =
         let g = e.Graphics
